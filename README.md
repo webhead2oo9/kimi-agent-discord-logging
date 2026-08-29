@@ -143,9 +143,9 @@ snapshot_retention_days: 30
 ---
 ```
 
-You can add Markdown notes below the closing `---`. If the settings are
-invalid, Kimi disables the module for that server and reports the error instead
-of guessing what you meant.
+The file must contain frontmatter only; do not add Markdown notes after the
+closing `---`. If the settings are invalid, Kimi disables the module for that
+server and reports the error instead of guessing what you meant.
 
 | Field | Type | Default | Meaning |
 |---|---|---:|---|
