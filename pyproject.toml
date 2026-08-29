@@ -1,0 +1,60 @@
+[project]
+name = "kimi-agent-discord-logging"
+version = "0.2.0"
+description = "Discord audit logging module for Kimi"
+requires-python = ">=3.14"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "webhead2oo9" }]
+keywords = ["audit-log", "discord", "discord-bot", "kimi-agent", "module"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = ["kimi-agent-module-api>=1.0.0,<2"]
+
+[project.optional-dependencies]
+dev = [
+    "kimi-agent-module-api[testing]>=1.0.0,<2",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "twine",
+]
+
+[project.entry-points."kimi_agent.modules"]
+discord_logging = "kimi_agent_discord_logging:SPEC"
+
+[project.urls]
+Documentation = "https://github.com/webhead2oo9/kimi-agent-discord-logging#readme"
+Issues = "https://github.com/webhead2oo9/kimi-agent-discord-logging/issues"
+Repository = "https://github.com/webhead2oo9/kimi-agent-discord-logging"
+
+[build-system]
+requires = ["setuptools>=84"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kimi_agent_discord_logging = ["py.typed"]
+
+[tool.mypy]
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src:$MYPY_CONFIG_FILE_DIR/tests"
+explicit_package_bases = true
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
