@@ -33,8 +33,9 @@ a model.
 - Permission to install a Python package into the environment that runs Kimi.
 - A logging channel in each server where the module should be active.
 
-The package installs `kimi-agent-module-api>=1.0.0,<2` from PyPI. It does not
-import code from a local Kimi checkout.
+The development lock resolves `kimi-agent-module-api>=1.0.0,<2` from PyPI. A
+production editable install uses the compatible API already provided by Kimi;
+the module does not import code from a local Kimi checkout.
 
 ## Install and activate
 
@@ -42,20 +43,21 @@ There are two parts to installation: install the Python package, then tell
 Kimi to load its `discord_logging` entry point. Kimi does not automatically
 load every module it finds in the environment.
 
-### 1. Install the package
+### 1. Install a reviewed checkout
 
-For a normal installation, install the package from PyPI into the same virtual
-environment that runs Kimi. Run this from Kimi's `bot/` directory:
+Clone this repository next to Kimi and check out the reviewed tag or exact
+commit you want to run:
 
 ```console
-uv pip install --python .venv/bin/python kimi-agent-discord-logging==0.2.0
+git clone https://github.com/webhead2oo9/kimi-agent-discord-logging.git /path/to/kimi-agent-discord-logging
+git -C /path/to/kimi-agent-discord-logging checkout --detach <reviewed-tag-or-commit>
 ```
 
-If you are working on the module, clone this repository next to the Kimi
-checkout and install it in editable mode. Replace the example path:
+Then run this from Kimi's `bot/` directory. `--no-deps` keeps Kimi's reviewed
+module API and other host dependencies authoritative:
 
 ```console
-uv pip install --python .venv/bin/python --editable /path/to/kimi-agent-discord-logging
+uv pip install --python .venv/bin/python --no-deps --editable /path/to/kimi-agent-discord-logging
 ```
 
 You can also build and install the wheel yourself:
@@ -63,7 +65,7 @@ You can also build and install the wheel yourself:
 ```console
 uv build --no-sources
 cd /path/to/kimi-agent/bot
-uv pip install --python .venv/bin/python /path/to/kimi-agent-discord-logging/dist/kimi_agent_discord_logging-0.2.0-py3-none-any.whl
+uv pip install --python .venv/bin/python --no-deps /path/to/kimi-agent-discord-logging/dist/kimi_agent_discord_logging-<version>-py3-none-any.whl
 ```
 
 If a later Kimi `uv sync` removes the module because it is not in Kimi's lock
@@ -188,7 +190,7 @@ journalctl --user -u kimi-agent.service -n 100 --no-pager
 
 Use the actual unit name if your service was renamed. Then check the following:
 
-1. Startup logs contain `Kimi module started: discord_logging 0.2.0` and a
+1. Startup logs contain `Kimi module started: discord_logging <version>` and a
    successful Discord command sync.
 2. `/modules status` reports `discord_logging` as healthy in the target server.
 3. `/logging setup` is registered for staff.
