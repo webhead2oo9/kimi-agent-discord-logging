@@ -15,6 +15,7 @@ FIELD_LOG_BULK_DELETES = "log_bulk_deletes"
 FIELD_LOG_INVITE_CREATE = "log_invite_create"
 FIELD_LOG_INVITE_DELETE = "log_invite_delete"
 FIELD_LOG_MEMBER_JOINS = "log_member_joins"
+FIELD_IGNORE_BOTS = "ignore_bots"
 FIELD_IGNORED_CHANNELS = "ignored_channel_ids"
 FIELD_RETENTION_DAYS = "snapshot_retention_days"
 
@@ -40,6 +41,12 @@ GUILD_SETTINGS = GuildSettingsSchema(
         GuildSettingField(FIELD_LOG_INVITE_DELETE, "bool", default=True),
         GuildSettingField(FIELD_LOG_MEMBER_JOINS, "bool", default=True),
         GuildSettingField(
+            FIELD_IGNORE_BOTS,
+            "bool",
+            default=True,
+            help="Do not post edit or deletion logs for messages authored by bot users.",
+        ),
+        GuildSettingField(
             FIELD_IGNORED_CHANNELS,
             "id_list",
             default=(),
@@ -58,6 +65,7 @@ GUILD_SETTINGS = GuildSettingsSchema(
 
 __all__ = [
     "FIELD_IGNORED_CHANNELS",
+    "FIELD_IGNORE_BOTS",
     "FIELD_LOGGING_CHANNEL",
     "FIELD_LOG_BULK_DELETES",
     "FIELD_LOG_DELETES",

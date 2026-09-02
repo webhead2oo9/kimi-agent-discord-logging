@@ -44,6 +44,7 @@ from kimi_agent_module_api.events import (
 )
 
 from kimi_agent_discord_logging.guild_settings import (
+    FIELD_IGNORE_BOTS,
     FIELD_IGNORED_CHANNELS,
     FIELD_LOG_BULK_DELETES,
     FIELD_LOG_DELETES,
@@ -199,6 +200,22 @@ class DiscordLoggingModule:
                 if stored is not None:
                     await snapshots.delete(ref)
                 return
+            if self._ignores_bots(ref.guild_id) and (
+                (stored is not None and stored.author_is_bot)
+                or (current is not None and current.author_is_bot)
+            ):
+                if current is not None:
+                    await self._store(current)
+                elif stored is not None and after is not None:
+                    await snapshots.update_after_edit(
+                        ref,
+                        after,
+                        attachments=(),
+                        edited_at=payload.edited_at or self._clock(),
+                        expires_at=self._expiry(ref.guild_id),
+                    )
+                self._report_health()
+                return
             if after is None:
                 self._snapshots_missed += 1
                 self._report_health()
@@ -256,6 +273,13 @@ class DiscordLoggingModule:
             self._events_seen += 1
             _ctx, snapshots = self._require_started()
             stored = await snapshots.get(ref)
+            event_author_is_bot = getattr(payload, "author_is_bot", None)
+            if self._ignores_bots(ref.guild_id) and (
+                event_author_is_bot is True or (stored is not None and stored.author_is_bot)
+            ):
+                await snapshots.delete(ref)
+                self._report_health()
+                return
             effective_ref = stored.ref if stored is not None else ref
             if not self._tracks_message(effective_ref):
                 if stored is not None:
@@ -307,6 +331,19 @@ class DiscordLoggingModule:
             stored = await snapshots.get_many(refs)
             if len(stored) < len(refs):
                 self._snapshots_missed += len(refs) - len(stored)
+            if self._ignores_bots(guild_id):
+                bot_message_ids = {
+                    int(message_id) for message_id in getattr(payload, "bot_message_ids", ())
+                }
+                bot_message_ids.update(item.ref.message_id for item in stored if item.author_is_bot)
+                bot_refs = tuple(ref for ref in refs if ref.message_id in bot_message_ids)
+                if bot_refs:
+                    await snapshots.delete_many(bot_refs)
+                    refs = tuple(ref for ref in refs if ref.message_id not in bot_message_ids)
+                    stored = [item for item in stored if item.ref.message_id not in bot_message_ids]
+                if not refs:
+                    self._report_health()
+                    return
             effective_ref = stored[0].ref if stored else refs[0]
             should_log = self._tracks_message(effective_ref) and self._guild_values(guild_id).get(
                 FIELD_LOG_BULK_DELETES, True
@@ -576,6 +613,9 @@ class DiscordLoggingModule:
             bool(values.get(field, True))
             for field in (FIELD_LOG_EDITS, FIELD_LOG_DELETES, FIELD_LOG_BULK_DELETES)
         )
+
+    def _ignores_bots(self, guild_id: int) -> bool:
+        return bool(self._guild_values(guild_id).get(FIELD_IGNORE_BOTS, True))
 
     def _expiry(self, guild_id: int) -> float:
         days = int(self._guild_values(guild_id).get(FIELD_RETENTION_DAYS, 30))

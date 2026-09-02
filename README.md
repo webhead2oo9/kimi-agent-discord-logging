@@ -33,7 +33,7 @@ a model.
 - Permission to install a Python package into the environment that runs Kimi.
 - A logging channel in each server where the module should be active.
 
-The development lock resolves `kimi-agent-module-api>=1.0.0,<2` from PyPI. A
+The development lock resolves `kimi-agent-module-api>=1.3.0,<2` from PyPI. A
 production editable install uses the compatible API already provided by Kimi;
 the module does not import code from a local Kimi checkout.
 
@@ -140,6 +140,7 @@ log_bulk_deletes: true
 log_invite_create: true
 log_invite_delete: true
 log_member_joins: true
+ignore_bots: true
 ignored_channel_ids: []
 snapshot_retention_days: 30
 ---
@@ -158,13 +159,15 @@ server and reports the error instead of guessing what you meant.
 | `log_invite_create` | boolean | `true` | Post invite-create logs. |
 | `log_invite_delete` | boolean | `true` | Post invite-delete logs. |
 | `log_member_joins` | boolean | `true` | Post member-join logs and invite attribution. |
+| `ignore_bots` | boolean | `true` | Do not post edit or deletion logs for messages authored by Discord bot users. Set to `false` to include them. |
 | `ignored_channel_ids` | list of channel IDs | `[]` | Channels whose messages are neither stored nor logged. Ignoring a parent also covers its threads. |
 | `snapshot_retention_days` | integer, 1–365 | `30` | How long temporary message copies are kept. |
 
 The `log_edits`, `log_deletes`, and `log_bulk_deletes` switches decide which
 events are posted. They do not decide which messages are temporarily stored.
-As long as a logging channel is configured, the module remembers messages from
-every non-ignored channel so it can handle a later edit or deletion.
+As long as a logging channel is configured, the module remembers eligible
+messages from every non-ignored channel so it can handle a later edit or
+deletion. Bot-authored edits and deletions are omitted by default.
 
 Put sensitive channels in `ignored_channel_ids`. Their messages, including
 messages in child threads, will not be stored or logged. When you change the
@@ -221,8 +224,11 @@ that in-memory data.
 The important privacy detail is that this module sees ordinary messages in the
 channels the bot can access, even when nobody mentions the bot. It needs to see
 the original message if it is going to show that message after an edit or
-deletion. It does not store messages from the logging channel or from channels
-listed in `ignored_channel_ids`.
+deletion. Bot-authored snapshots are retained for the same period even when
+`ignore_bots` is enabled because Discord deletion events do not independently
+identify bot authors. This lets the module suppress those deletion logs. It does
+not store messages from the logging channel or from channels listed in
+`ignored_channel_ids`.
 
 Your public privacy notice should explain this. Give the bot access only to
 the channels you intend to log, and choose the shortest retention period that
@@ -297,7 +303,7 @@ should still review a module's code before enabling it.
 |---|---|
 | Startup says the entry point is missing | Install this package into the interpreter used by the service, not a different shell environment. Check with `.venv/bin/python -c "import importlib.metadata as m; print([e.name for e in m.entry_points(group='kimi_agent.modules')])"` from `bot/`. |
 | Module is listed as soft-disabled | Enable both intents in the dotenv and Discord Developer Portal, then restart. `/modules status` names the missing capability. |
-| Module is healthy but nothing is posted | Confirm the server settings file has `logging_channel_id`, the channel is not ignored, the relevant `log_*` field is true, and the bot can view/send/embed there. |
+| Module is healthy but nothing is posted | Confirm the server settings file has `logging_channel_id`, the channel is not ignored, the relevant `log_*` field is true, `ignore_bots` is not excluding the author, and the bot can view/send/embed there. |
 | Delivery health is degraded or Discord returns `403 Missing Access` | Recheck the bot's channel overwrites and role permissions for the configured logging channel. Health failures are tracked separately for each server, so success elsewhere does not hide this fault. |
 | Invite create/delete logs are absent | Grant **Manage Channels** where invites are created. Discord does not emit those events to the bot otherwise. |
 | Join logs say the invite is unknown | Grant **Manage Server**, then restart so the module can record the starting invite counts. Vanity URLs and several changes at once can still produce an unknown result. |

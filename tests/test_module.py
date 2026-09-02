@@ -42,6 +42,7 @@ from kimi_agent_module_api.events import (
 from kimi_agent_module_api.testing import FakeInteraction
 
 from kimi_agent_discord_logging.guild_settings import (
+    FIELD_IGNORE_BOTS,
     FIELD_IGNORED_CHANNELS,
     FIELD_LOG_MEMBER_JOINS,
     FIELD_LOGGING_CHANNEL,
@@ -52,7 +53,9 @@ from kimi_agent_discord_logging.snapshots import SnapshotStore
 pytestmark = pytest.mark.asyncio
 
 
-def _message(message_id: int = 1, *, content: str = "before") -> MessageSnapshot:
+def _message(
+    message_id: int = 1, *, content: str = "before", author_is_bot: bool = False
+) -> MessageSnapshot:
     return MessageSnapshot(
         MessageRef(GUILD, SOURCE_CHANNEL, message_id),
         AUTHOR,
@@ -61,6 +64,7 @@ def _message(message_id: int = 1, *, content: str = "before") -> MessageSnapshot
         f"https://discord.com/channels/{GUILD}/{SOURCE_CHANNEL}/{message_id}",
         900_000.0,
         author_display_name="Ada",
+        author_is_bot=author_is_bot,
     )
 
 
@@ -86,6 +90,121 @@ async def test_start_registers_events_command_job_and_invite_baseline(started: H
     assert started.interactions.commands["logging.setup"][0].min_tier == "staff"
     assert started.scheduler.jobs[PRUNE_JOB_KEY].handler == PRUNE_HANDLER
     assert len(started.discord.calls_for("fetch_invites")) == 1
+
+
+async def test_bot_message_is_snapshotted_for_delete_classification(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    stored = await SnapshotStore(started.storage).get(message.ref)
+    assert stored is not None and stored.author_is_bot is True
+
+
+async def test_bot_message_is_snapshotted_when_filter_is_disabled(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+    started.guild_settings.set(GUILD, **{FIELD_IGNORE_BOTS: False})
+
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    stored = await SnapshotStore(started.storage).get(message.ref)
+    assert stored is not None and stored.author_is_bot is True
+
+
+async def test_bot_edit_is_not_logged_by_default(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+    started.discord.messages[message.ref] = MessageSnapshot(
+        message.ref,
+        message.author_id,
+        "after",
+        (),
+        message.jump_url,
+        message.created_at,
+        author_display_name=message.author_display_name,
+        author_is_bot=True,
+        edited_at=started.clock.now,
+    )
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_EDIT,
+        MessageEditEvent(message.ref, AUTHOR, "before", "after", started.clock.now),
+    )
+
+    assert _sent_embeds(started) == []
+
+
+async def test_hidden_bot_edit_refreshes_snapshot_when_live_fetch_fails(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_EDIT,
+        MessageEditEvent(message.ref, AUTHOR, "before", "after", started.clock.now),
+    )
+
+    stored = await SnapshotStore(started.storage).get(message.ref)
+    assert stored is not None
+    assert stored.content == "after"
+    assert stored.attachments == ()
+    assert _sent_embeds(started) == []
+
+
+async def test_bot_edit_is_logged_when_filter_is_disabled(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+    started.guild_settings.set(GUILD, **{FIELD_IGNORE_BOTS: False})
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_EDIT,
+        MessageEditEvent(message.ref, AUTHOR, "before", "after", started.clock.now),
+    )
+
+    [embed] = _sent_embeds(started)
+    assert embed.title == "Message edited"
+
+
+async def test_bot_delete_is_not_logged_by_default(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_DELETE,
+        MessageDeleteEvent(message.ref, None, None, ()),
+    )
+
+    assert _sent_embeds(started) == []
+    assert await SnapshotStore(started.storage).get(message.ref) is None
+
+
+async def test_cached_bot_delete_without_snapshot_is_not_logged(started: Harness) -> None:
+    ref = _message(14, author_is_bot=True).ref
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_DELETE,
+        MessageDeleteEvent(ref, AUTHOR, "bot content", (), author_is_bot=True),
+    )
+
+    assert _sent_embeds(started) == []
+
+
+async def test_bot_delete_is_logged_when_filter_is_disabled(started: Harness) -> None:
+    message = _message(author_is_bot=True)
+    started.guild_settings.values[GUILD][FIELD_IGNORE_BOTS] = False
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_DELETE,
+        MessageDeleteEvent(message.ref, None, None, ()),
+    )
+
+    [embed] = _sent_embeds(started)
+    assert embed.title == "Message deleted"
 
 
 async def test_uncached_edit_uses_snapshot_and_updates_it(started: Harness) -> None:
@@ -199,6 +318,55 @@ async def test_bulk_delete_posts_one_summary_and_cleans_snapshots(started: Harne
         assert await store.get(message.ref) is None
 
 
+async def test_bulk_delete_of_bot_messages_is_not_logged_by_default(started: Harness) -> None:
+    messages = (
+        _message(10, content="bot one", author_is_bot=True),
+        _message(11, content="bot two", author_is_bot=True),
+    )
+    for message in messages:
+        await _deliver(started, TOPIC_MESSAGE, MessageEvent(message, author_is_bot=True))
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_BULK_DELETE,
+        MessageBulkDeleteEvent(tuple(message.ref for message in messages)),
+    )
+
+    assert _sent_embeds(started) == []
+    store = SnapshotStore(started.storage)
+    assert all([await store.get(message.ref) is None for message in messages])
+
+
+async def test_cached_bot_bulk_delete_without_snapshots_is_not_logged(started: Harness) -> None:
+    refs = (_message(15).ref, _message(16).ref)
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_BULK_DELETE,
+        MessageBulkDeleteEvent(refs, bot_message_ids=(15, 16)),
+    )
+
+    assert _sent_embeds(started) == []
+
+
+async def test_mixed_bulk_delete_logs_only_human_messages(started: Harness) -> None:
+    human = _message(12, content="human")
+    bot = _message(13, content="bot", author_is_bot=True)
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(human, author_is_bot=False))
+    await _deliver(started, TOPIC_MESSAGE, MessageEvent(bot, author_is_bot=True))
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_BULK_DELETE,
+        MessageBulkDeleteEvent((human.ref, bot.ref)),
+    )
+
+    [embed] = _sent_embeds(started)
+    assert "**1** messages" in str(embed.description)
+    assert "human" in embed.fields[0][1]
+    assert "bot" not in embed.fields[0][1]
+
+
 async def test_logging_and_ignored_channels_are_not_snapshotted(started: Harness) -> None:
     started.guild_settings.set(GUILD, **{FIELD_IGNORED_CHANNELS: [SOURCE_CHANNEL]})
     await _deliver(started, TOPIC_MESSAGE, MessageEvent(_message(), author_is_bot=False))
@@ -225,6 +393,31 @@ async def test_ignored_parent_channel_excludes_its_threads(started: Harness) -> 
     await _deliver(started, TOPIC_MESSAGE, MessageEvent(thread_message, author_is_bot=False))
 
     assert await SnapshotStore(started.storage).get(thread_message.ref) is None
+
+
+async def test_ignored_parent_excludes_fetched_bot_edit_snapshot(started: Harness) -> None:
+    thread_id = SOURCE_CHANNEL + 1
+    raw_ref = MessageRef(GUILD, thread_id, 17)
+    fetched = MessageSnapshot(
+        MessageRef(GUILD, thread_id, 17, parent_channel_id=SOURCE_CHANNEL),
+        AUTHOR,
+        "after",
+        (),
+        f"https://discord.com/channels/{GUILD}/{thread_id}/17",
+        1.0,
+        author_is_bot=True,
+    )
+    started.guild_settings.set(GUILD, **{FIELD_IGNORED_CHANNELS: [SOURCE_CHANNEL]})
+    started.discord.messages[raw_ref] = fetched
+
+    await _deliver(
+        started,
+        TOPIC_MESSAGE_EDIT,
+        MessageEditEvent(raw_ref, AUTHOR, "before", "after", started.clock.now),
+    )
+
+    assert await SnapshotStore(started.storage).get(raw_ref) is None
+    assert _sent_embeds(started) == []
 
 
 async def test_message_work_in_different_guilds_does_not_share_a_lock(

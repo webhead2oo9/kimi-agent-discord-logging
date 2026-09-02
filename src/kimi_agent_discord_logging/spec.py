@@ -16,7 +16,7 @@ from kimi_agent_module_api.events import (
 from kimi_agent_discord_logging.guild_settings import GUILD_SETTINGS
 from kimi_agent_discord_logging.module import MODULE_NAME, DiscordLoggingModule
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 def create(_ctx: ModuleLoadContext) -> AppModule:

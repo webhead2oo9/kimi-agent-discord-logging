@@ -14,7 +14,7 @@ from kimi_agent_module_api.contracts import (
 )
 from kimi_agent_module_api.testing import load_context
 
-from kimi_agent_discord_logging.guild_settings import FIELD_RETENTION_DAYS
+from kimi_agent_discord_logging.guild_settings import FIELD_IGNORE_BOTS, FIELD_RETENTION_DAYS
 from kimi_agent_discord_logging.migrations import MIGRATIONS
 from kimi_agent_discord_logging.module import MODULE_NAME, DiscordLoggingModule
 from kimi_agent_discord_logging.spec import SPEC, VERSION, create
@@ -65,3 +65,10 @@ def test_retention_is_bounded() -> None:
     assert validate({FIELD_RETENTION_DAYS: 365}) == ()
     assert validate({FIELD_RETENTION_DAYS: 0})
     assert validate({FIELD_RETENTION_DAYS: 366})
+
+
+def test_bot_messages_are_ignored_by_default() -> None:
+    assert SPEC.guild_settings is not None
+    fields = {field.name: field for field in SPEC.guild_settings.fields}
+
+    assert fields[FIELD_IGNORE_BOTS].default is True

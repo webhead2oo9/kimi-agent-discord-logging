@@ -181,9 +181,9 @@ class SnapshotStore:
         """Apply current privacy settings to snapshots already at rest.
 
         ``None`` retention means snapshotting is disabled for the guild and all
-        existing rows should be removed. Otherwise expiry is recalculated from
-        the latest stored message activity, so lowering a guild's retention
-        takes effect on old rows as well as new events.
+        existing rows should be removed. Otherwise channel exclusions are applied
+        before expiry is recalculated from the latest stored message activity, so
+        privacy changes and lower retention apply to old rows as well as new events.
         """
         async with self._storage.write_transaction() as connection:
             if retention_seconds is None:
