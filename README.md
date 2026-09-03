@@ -1,66 +1,55 @@
 # Discord logging module for Kimi
 
-This module adds a practical audit log to a Kimi Discord bot. It remembers
-recent messages long enough to show what changed when a message is edited or
-deleted. It can also log invite changes and make a careful guess about which
-invite a new member used.
+This module adds an audit log to a Kimi Discord bot. It keeps a temporary copy of
+recent messages so it can show what changed when a message is edited or deleted.
+It can also log invite changes and make a careful guess about which invite a new
+member used.
 
-If you are building a Kimi module of your own, this repository is also a
-complete working example. It uses only the public
-[`kimi-agent-module-api`](https://pypi.org/project/kimi-agent-module-api/),
-keeps its own settings and database table, and can be tested without importing
-the rest of Kimi.
+It is also a complete, working example of a Kimi module. It uses only the public
+[`kimi-agent-module-api`](https://pypi.org/project/kimi-agent-module-api/), keeps
+its own settings and database table, and its tests run without the rest of Kimi.
 
 ## What gets logged
 
-| Event | What the log shows | What to know |
+| Event | What the log shows | Good to know |
 |---|---|---|
-| Message edit | Author, channel, before/after text, and a jump link | The original text is available only if Discord cached it or the module saw the message earlier. |
-| Message delete | Author, channel, recovered content, and attachment links | Discord does not say who deleted the message. Content may be unavailable if the bot never saw it. |
-| Bulk delete | Count and up to eight recovered message previews | The module can recover only messages it saw earlier. |
-| Invite create/delete | Code, channel, creator, and limits when Discord supplies them | Discord emits these events only where the bot has **Manage Channels**. |
-| Member join | Member and likely invite/inviter | Discord does not provide the invite directly, so this can sometimes be unknown. |
+| Message edit | Author, channel, before and after text, jump link | The old text is only available if the module saw the message earlier or Discord still had it cached. |
+| Message delete | Author, channel, recovered content, attachment links | Discord does not say who deleted it. Content may be missing if the bot never saw the message. |
+| Bulk delete | Count and up to eight recovered previews | Only messages the module saw earlier can be recovered. |
+| Invite created or deleted | Code, channel, creator, and limits when Discord provides them | Discord only sends these events where the bot has **Manage Channels**. |
+| Member join | Member and the likely invite and inviter | Discord does not say which invite was used, so this can be unknown. |
 
-The module does not give the LLM a tool, and it never sends message content to
-a model.
+The module gives the AI no tools and never sends message content to a model.
 
-## Requirements
+## Before you install
 
-- A Kimi installation that supports module API version 1.
-- Python 3.14 or later, matching Kimi's runtime.
-- The bot's **Server Members Intent** and **Message Content Intent**, enabled
-  both in Kimi's configuration and in the Discord Developer Portal.
+You need:
+
+- A Kimi installation that supports module API version 1, on Python 3.14 or newer.
+- The bot's **Server Members Intent** and **Message Content Intent**, turned on
+  both in Kimi's environment file and in the Discord Developer Portal.
 - Permission to install a Python package into the environment that runs Kimi.
-- A logging channel in each server where the module should be active.
+- A logging channel in each server that should use the module.
 
-The development lock resolves `kimi-agent-module-api>=1.3.0,<2` from PyPI. A
-production editable install uses the compatible API already provided by Kimi;
-the module does not import code from a local Kimi checkout.
+## Install
 
-## Install and activate
+### 1. Install the package
 
-There are two parts to installation: install the Python package, then tell
-Kimi to load its `discord_logging` entry point. Kimi does not automatically
-load every module it finds in the environment.
-
-### 1. Install a reviewed checkout
-
-Clone this repository next to Kimi and check out the reviewed tag or exact
-commit you want to run:
+Clone this repository next to Kimi and check out the tag or commit you want:
 
 ```console
 git clone https://github.com/webhead2oo9/kimi-agent-discord-logging.git /path/to/kimi-agent-discord-logging
-git -C /path/to/kimi-agent-discord-logging checkout --detach <reviewed-tag-or-commit>
+git -C /path/to/kimi-agent-discord-logging checkout --detach <tag-or-commit>
 ```
 
-Then run this from Kimi's `bot/` directory. `--no-deps` keeps Kimi's reviewed
-module API and other host dependencies authoritative:
+From Kimi's `bot/` directory, install it into Kimi's own Python environment. The
+`--no-deps` flag keeps Kimi's already-installed dependencies in charge:
 
 ```console
 uv pip install --python .venv/bin/python --no-deps --editable /path/to/kimi-agent-discord-logging
 ```
 
-You can also build and install the wheel yourself:
+You can build and install a wheel instead:
 
 ```console
 uv build --no-sources
@@ -68,68 +57,56 @@ cd /path/to/kimi-agent/bot
 uv pip install --python .venv/bin/python --no-deps /path/to/kimi-agent-discord-logging/dist/kimi_agent_discord_logging-<version>-py3-none-any.whl
 ```
 
-If a later Kimi `uv sync` removes the module because it is not in Kimi's lock
-file, run the install command again.
+If you later run `uv sync` in the Kimi checkout, it may uninstall this module. Run
+the install command again if that happens.
 
-### 2. Activate the entry point
+### 2. Turn the module on
 
-Add the module's entry-point name to the comma-separated `KIMI_MODULES` value
-in the dotenv used by the running service. Keep any modules already listed:
+Kimi does not load every module it finds. Add `discord_logging` to the
+`KIMI_MODULES` line in Kimi's environment file, keeping anything already there:
 
 ```dotenv
-KIMI_MODULES=discord_logging
+KIMI_MODULES=moderation,discord_logging
 ```
 
-For example, an existing `KIMI_MODULES=moderation` becomes
-`KIMI_MODULES=moderation,discord_logging`.
+### 3. Enable the intents
 
-### 3. Enable the required intents
-
-Set both values in the same Kimi dotenv:
+In the same environment file:
 
 ```dotenv
 MEMBERS_INTENT=true
 MESSAGE_CONTENT_INTENT=true
 ```
 
-Then enable **Server Members Intent** and **Message Content Intent** for the bot
-under **Discord Developer Portal → Bot → Privileged Gateway Intents**. If
-either one is missing, Kimi leaves this module off and explains why in
-`/modules status`.
+Then enable **Server Members Intent** and **Message Content Intent** in the Discord
+Developer Portal under **Bot → Privileged Gateway Intents**. If either is missing,
+Kimi leaves the module off and explains why in `/modules status`.
 
-### 4. Grant Discord permissions
+### 4. Give the bot permissions
 
-In the logging channel, the bot needs:
+In the logging channel: **View Channel**, **Send Messages**, and **Embed Links**.
 
-- **View Channel**
-- **Send Messages**
-- **Embed Links**
+In every channel you want logged: **View Channel**. **Read Message History** is
+strongly recommended. Without it, the module still logs text changes after an
+edit but forgets the old attachment list, so a removed attachment cannot show up
+later in a deletion log by mistake.
 
-In every channel you want logged, the bot needs **View Channel**.
-**Read Message History** is strongly recommended so it can refresh the full
-message after an edit. If it cannot do that, it still logs the text change but
-forgets the old attachment list. This prevents a removed attachment from
-showing up later in a deletion log.
-
-For invite features, it also needs:
-
-- **Manage Channels** in relevant channels so Discord sends invite-create and
-  invite-delete events.
-- **Manage Server** (`Manage Guild` in the API) so the bot can read current
-  invite-use counters and attribute joins.
-
-Missing **Manage Server** does not stop member-join logs; those logs report the
-invite as unknown.
+For invite logging: **Manage Channels** in the channels where invites are made, so
+Discord sends the invite events, and **Manage Server** so the bot can read invite
+use counts. Without **Manage Server**, join logs still appear but say the invite
+is unknown.
 
 ### 5. Configure each server
 
-Create one settings file for each Discord server that should use the module:
+Create one settings file per server:
 
 ```text
 <CONFIG_DIR>/guild-modules/<guild_id>/discord_logging.md
 ```
 
-Put this YAML block at the top of the file:
+The file holds only this block. Do not add notes after the closing `---`. If a
+value is invalid, Kimi turns the module off for that server and reports the
+error.
 
 ```markdown
 ---
@@ -146,223 +123,179 @@ snapshot_retention_days: 30
 ---
 ```
 
-The file must contain frontmatter only; do not add Markdown notes after the
-closing `---`. If the settings are invalid, Kimi disables the module for that
-server and reports the error instead of guessing what you meant.
+| Field | Default | Meaning |
+|---|---:|---|
+| `logging_channel_id` | unset | Text channel or active thread that receives logs. When unset, the module stores and logs nothing for this server. |
+| `log_edits` | `true` | Post edit logs. |
+| `log_deletes` | `true` | Post single-delete logs. |
+| `log_bulk_deletes` | `true` | Post bulk-delete summaries. |
+| `log_invite_create` | `true` | Post invite-create logs. |
+| `log_invite_delete` | `true` | Post invite-delete logs. |
+| `log_member_joins` | `true` | Post join logs with invite attribution. |
+| `ignore_bots` | `true` | Skip edit and delete logs for messages written by bots. |
+| `ignored_channel_ids` | `[]` | Channels that are never stored or logged. Ignoring a channel also covers its threads. |
+| `snapshot_retention_days` | `30` | How long temporary message copies are kept, from 1 to 365. |
 
-| Field | Type | Default | Meaning |
-|---|---|---:|---|
-| `logging_channel_id` | Discord channel ID | unset | Text channel or active thread that receives logs. When unset, logging and temporary message storage are disabled for the server. |
-| `log_edits` | boolean | `true` | Post edit logs. |
-| `log_deletes` | boolean | `true` | Post single-delete logs. |
-| `log_bulk_deletes` | boolean | `true` | Post bulk-delete summaries. |
-| `log_invite_create` | boolean | `true` | Post invite-create logs. |
-| `log_invite_delete` | boolean | `true` | Post invite-delete logs. |
-| `log_member_joins` | boolean | `true` | Post member-join logs and invite attribution. |
-| `ignore_bots` | boolean | `true` | Do not post edit or deletion logs for messages authored by Discord bot users. Set to `false` to include them. |
-| `ignored_channel_ids` | list of channel IDs | `[]` | Channels whose messages are neither stored nor logged. Ignoring a parent also covers its threads. |
-| `snapshot_retention_days` | integer, 1–365 | `30` | How long temporary message copies are kept. |
-
-The `log_edits`, `log_deletes`, and `log_bulk_deletes` switches decide which
-events are posted. They do not decide which messages are temporarily stored.
-As long as a logging channel is configured, the module remembers eligible
-messages from every non-ignored channel so it can handle a later edit or
-deletion. Bot-authored edits and deletions are omitted by default.
-
-Put sensitive channels in `ignored_channel_ids`. Their messages, including
-messages in child threads, will not be stored or logged. When you change the
-ignored list or retention period, the module also applies the new setting to
-data it already holds. Clearing `logging_channel_id` removes that server's
-saved messages and in-memory invite data.
+The `log_*` switches only decide what gets posted. As long as a logging channel is
+set, the module remembers eligible messages from every non-ignored channel so it
+can handle a later edit or deletion. Put sensitive channels in
+`ignored_channel_ids`. Changing the ignored list or retention period also cleans
+up messages the module already holds. Clearing `logging_channel_id` removes that
+server's saved messages and invite data.
 
 Staff can also run `/logging setup #channel`. This creates a Kimi review card
-instead of changing the file behind the scenes. The new channel takes effect
-only after an authorized operator approves it. The other settings still live
-in the file.
+rather than editing the file directly, and takes effect only after an authorized
+operator approves it. The other settings still live in the file.
 
-### 6. Restart and verify
+### 6. Restart and check
 
-Restart Kimi with the service manager you use. If it runs as the standard user
-service:
+Restart Kimi. If it runs as the standard user service:
 
 ```console
 systemctl --user restart kimi-agent.service
-systemctl --user status kimi-agent.service
 journalctl --user -u kimi-agent.service -n 100 --no-pager
 ```
 
-Use the actual unit name if your service was renamed. Then check the following:
+Then confirm:
 
-1. Startup logs contain `Kimi module started: discord_logging <version>` and a
-   successful Discord command sync.
-2. `/modules status` reports `discord_logging` as healthy in the target server.
-3. `/logging setup` is registered for staff.
-4. Editing and deleting a test message in a non-ignored channel produces the
-   expected embeds.
-5. Creating a disposable invite produces a log if invite logging is enabled.
+1. The startup log contains `Kimi module started: discord_logging <version>` and a
+   successful command sync.
+2. `/modules status` shows `discord_logging` as healthy in the server.
+3. `/logging setup` is available to staff.
+4. Editing and deleting a test message in a logged channel produces the expected
+   embeds.
+5. If invite logging is on, creating a throwaway invite produces a log.
 
-## Invite attribution is best-effort
+## Invite attribution is a best guess
 
-Discord tells the bot that someone joined, but not which invite they used. To
-work around that, the module records each invite's use count at startup and
-checks the counts again after a member joins. If exactly one count went up, it
-can usually identify the invite. It also keeps a short 15-second window for
-one-use invites, which disappear as soon as they are used.
+Discord tells the bot that someone joined, but not which invite they used. The
+module records each invite's use count at startup and compares again after a
+join. If exactly one count went up, it usually knows the invite. It also watches a
+15-second window for one-use invites, which vanish as soon as they are used.
 
-Sometimes there is no safe answer. Vanity URLs, missing permissions, several
-people joining at once, and invite changes arriving out of order can all make
-the result uncertain. In those cases the module says the invite is unknown
-instead of guessing. Treat invite attribution as a helpful clue, not proof for
-a moderation decision.
+Vanity URLs, missing permissions, several people joining at once, and events
+arriving out of order can all make the answer uncertain. The module then reports
+the invite as unknown rather than guessing. Treat attribution as a clue, not as
+proof for a moderation decision.
 
-Each server has its own invite state. Turning join logging on creates a fresh
-starting point; turning the module off or clearing its logging channel removes
-that in-memory data.
+Each server has its own invite state, held in memory. Turning on join logging
+starts fresh. Turning the module off or clearing its logging channel discards it.
 
 ## Data and privacy
 
-The important privacy detail is that this module sees ordinary messages in the
-channels the bot can access, even when nobody mentions the bot. It needs to see
-the original message if it is going to show that message after an edit or
-deletion. Bot-authored snapshots are retained for the same period even when
-`ignore_bots` is enabled because Discord deletion events do not independently
-identify bot authors. This lets the module suppress those deletion logs. It does
-not store messages from the logging channel or from channels listed in
-`ignored_channel_ids`.
+The key point: this module reads ordinary messages in every channel the bot can
+see, even when nobody mentions the bot. That is the only way it can show the
+original message after an edit or deletion. Your server's privacy notice should
+say so. Give the bot access only to channels you intend to log, and pick the
+shortest retention period that works for your community.
 
-Your public privacy notice should explain this. Give the bot access only to
-the channels you intend to log, and choose the shortest retention period that
-works for your community.
+It does not store messages from the logging channel or from ignored channels.
+Bot-authored messages are stored for the same period even with `ignore_bots` on,
+because Discord's delete events do not identify bot authors. The stored copy is
+what lets the module skip those logs.
 
-### What is stored in the database
+### What is stored
 
-The module uses one table named `message_snapshots`. In Kimi's shared database,
-its full name is `discord_logging_message_snapshots`. There is one row for each
-message the module is temporarily remembering:
+One table, `discord_logging_message_snapshots` in Kimi's shared database, with a
+row per remembered message:
 
-| Stored value | Why it is kept |
+| Stored value | Why |
 |---|---|
-| Server, channel, parent-channel, and message IDs | Find the message, respect ignored thread parents, and show where it came from. |
-| Author ID, display name, and bot flag | Show who wrote the original message. |
-| Message content | Recover edits and deletions that Discord no longer has cached. |
-| Attachment ID, filename, Discord URL, byte size, and content type | Include attachment links and metadata in deletion logs. Attachment bytes are not downloaded. |
-| Creation and edit timestamps | Preserve event context. |
-| Expiration timestamp | Enforce configured snapshot retention. |
+| Server, channel, parent channel, and message IDs | Find the message, honor ignored parents, and show where it came from. |
+| Author ID, display name, and bot flag | Show who wrote it. |
+| Message content | Recover edits and deletions Discord no longer has. |
+| Attachment ID, filename, Discord URL, size, and content type | Link attachments in deletion logs. Attachment files are never downloaded. |
+| Creation and edit timestamps | Preserve context. |
+| Expiration timestamp | Enforce the retention setting. |
 
-After a deletion log is posted successfully, the corresponding saved message
-is removed immediately. If posting fails, the saved message stays until its
-normal expiration time; failed posts are not retried automatically. Kimi runs
-a daily job that removes expired rows.
+After a deletion log is posted, the stored copy is removed immediately. If posting
+fails, the copy stays until it expires. Failed posts are not retried. Kimi runs a
+daily job that removes expired rows.
 
-After an edit, the module asks Discord for the current message so its saved
-attachment list stays accurate. If Discord cannot provide it, the module keeps
-the new text but clears the old attachment list. It is better to omit an
-attachment than to show one the author already removed.
+After an edit, the module fetches the current message from Discord so the stored
+attachment list stays accurate. If it cannot, it keeps the new text and clears the
+old attachment list.
 
-When upgrading from an older version, migration
-`002_add_parent_channel_to_message_snapshots` adds the thread's parent channel
-to saved messages. It clears the existing temporary message cache once because
-those older rows do not contain enough information to apply parent-channel
-exclusions safely. New messages refill the cache normally.
+Invite codes, counters, and inviter IDs live only in memory and are gone when Kimi
+stops. Log embeds posted to Discord follow that channel's own retention. Cleaning
+the local table does not delete them. Outside Discord itself, the module sends no
+data to any model, analytics service, or third party.
 
-Clearing a server's logging channel, adding an ignored channel, lowering the
-retention period, or disabling the module also cleans up messages already in
-the table. Removing `discord_logging` from `KIMI_MODULES` or uninstalling the
-package is different: the module is no longer running, so it cannot clean up
-its table. Existing rows remain until the module runs again or an operator
-removes the table. Backups may keep copies according to your backup policy.
+### Upgrading
 
-For a clean uninstall, first remove `logging_channel_id` from every server's
-settings while the module is still running. Wait for Kimi to notice the change,
-or restart it once, so the saved messages are removed. Then remove
-`discord_logging` from `KIMI_MODULES` and uninstall the package. Waiting for
-retention to expire after uninstalling will not help because the cleanup job is
-no longer running.
+Migration `002_add_parent_channel_to_message_snapshots` adds the parent channel to
+stored rows. It clears the existing cache once, because older rows lack the
+information needed to apply thread exclusions safely. New messages refill it.
 
-### Data kept in memory or posted to Discord
+### Uninstalling cleanly
 
-- Invite codes, counters, limits, channel IDs, and inviter IDs are held in
-  process memory for attribution. They are not written to the module table and
-  disappear when the process exits.
-- Audit embeds posted to Discord contain the selected event details and follow
-  the Discord server's channel and retention policies; pruning the local table
-  does not delete those posts.
-- The module talks to Discord only through Kimi's public module API. Attachment
-  and invite URLs may appear as links, but the module does not open or download
-  them.
-- Outside Discord itself, this package does not send module data to an LLM,
-  analytics service, or any other third party.
+Removing the module from `KIMI_MODULES` or uninstalling the package stops it, so it
+can no longer clean up its table. Existing rows stay until the module runs again
+or an operator drops the table. Backups keep copies according to your own policy.
 
-Kimi modules run as Python inside the Kimi process; they are not sandboxed.
-The public API makes their access easier to understand and review, but you
-should still review a module's code before enabling it.
+To uninstall cleanly, first remove `logging_channel_id` from every server's
+settings file while the module is still running. Wait for Kimi to notice, or
+restart it once, so the stored messages are deleted. Then remove `discord_logging`
+from `KIMI_MODULES` and uninstall the package.
+
+Kimi modules run as Python inside the Kimi process and are not sandboxed. Review a
+module's code before enabling it.
 
 ## Troubleshooting
 
-| Symptom | Likely cause and check |
+| Symptom | What to check |
 |---|---|
-| Startup says the entry point is missing | Install this package into the interpreter used by the service, not a different shell environment. Check with `.venv/bin/python -c "import importlib.metadata as m; print([e.name for e in m.entry_points(group='kimi_agent.modules')])"` from `bot/`. |
-| Module is listed as soft-disabled | Enable both intents in the dotenv and Discord Developer Portal, then restart. `/modules status` names the missing capability. |
-| Module is healthy but nothing is posted | Confirm the server settings file has `logging_channel_id`, the channel is not ignored, the relevant `log_*` field is true, `ignore_bots` is not excluding the author, and the bot can view/send/embed there. |
-| Delivery health is degraded or Discord returns `403 Missing Access` | Recheck the bot's channel overwrites and role permissions for the configured logging channel. Health failures are tracked separately for each server, so success elsewhere does not hide this fault. |
-| Invite create/delete logs are absent | Grant **Manage Channels** where invites are created. Discord does not emit those events to the bot otherwise. |
-| Join logs say the invite is unknown | Grant **Manage Server**, then restart so the module can record the starting invite counts. Vanity URLs and several changes at once can still produce an unknown result. |
-| An edit/delete says its snapshot was missing | The message predates startup, was in an ignored channel, expired, was not visible to the bot, or arrived while Message Content Intent was unavailable. |
-| `/logging setup` is absent | Confirm the module started and Discord command sync succeeded. The command is available only to staff in a server. |
-| A later `uv sync` made the module disappear | Reinstall the editable checkout or wheel after syncing Kimi. |
+| Startup says the entry point is missing | The package must be installed into the interpreter that runs the service. From `bot/`, run `.venv/bin/python -c "import importlib.metadata as m; print([e.name for e in m.entry_points(group='kimi_agent.modules')])"`. |
+| Module shows as soft-disabled | Enable both intents in the environment file and the Developer Portal, then restart. `/modules status` names what is missing. |
+| Module is healthy but nothing is posted | Check the server file has `logging_channel_id`, the channel is not ignored, the matching `log_*` field is true, `ignore_bots` is not excluding the author, and the bot can view, send, and embed there. |
+| Delivery health is degraded, or Discord returns `403 Missing Access` | Recheck the bot's role and channel permissions for the logging channel. Health is tracked per server. |
+| No invite create or delete logs | Grant **Manage Channels** where invites are made. |
+| Join logs say the invite is unknown | Grant **Manage Server**, then restart so starting counts are recorded. Vanity URLs and simultaneous joins can still be unknown. |
+| An edit or delete log says the snapshot was missing | The message predates startup, was in an ignored channel, expired, was not visible to the bot, or arrived while Message Content Intent was off. |
+| `/logging setup` is absent | Confirm the module started and command sync succeeded. It is staff-only and server-only. |
+| The module disappeared after `uv sync` | Reinstall it. |
 
-## Developer guide
+## For developers
 
-The module imports only Kimi's public module API. Its tests use the fakes in
-`kimi_agent_module_api.testing`, so you can work on this repository without
-loading the full bot. Read Kimi's
+The module imports only Kimi's public module API. Tests use the fakes in
+`kimi_agent_module_api.testing`, so you can work here without the full bot. Kimi's
 [`docs/modules.md`](https://github.com/webhead2oo9/kimi-agent/blob/main/docs/modules.md)
-for the full module lifecycle and API contracts.
+covers the module lifecycle and API.
 
 ### Code map
 
 | File | What it does |
 |---|---|
 | `pyproject.toml` | Package metadata, dependencies, and the `kimi_agent.modules` entry point. |
-| `.github/workflows/ci.yml` | Runs formatting, lint, type checks, tests, a dependency audit, and a package build. |
-| `MANIFEST.in` | Lists the extra files that belong in the source package, including the tests. |
-| `src/kimi_agent_discord_logging/spec.py` | Describes the module to Kimi and lists the Discord events and actions it needs. |
-| `src/kimi_agent_discord_logging/guild_settings.py` | Defines and validates the settings available to each server. |
-| `src/kimi_agent_discord_logging/migrations.py` | Creates and upgrades the module's database table. |
-| `src/kimi_agent_discord_logging/snapshots.py` | Reads and writes temporary message copies through Kimi's `ModuleStorage` API. |
-| `src/kimi_agent_discord_logging/invites.py` | Tracks invite counters and avoids guessing when the result is unclear. |
-| `src/kimi_agent_discord_logging/renderer.py` | Builds Discord embeds and keeps them within Discord's length limits. |
-| `src/kimi_agent_discord_logging/module.py` | Starts and stops the module, handles events, sends logs, and reports health. |
+| `.github/workflows/ci.yml` | Formatting, lint, type checks, tests, dependency audit, and a package build. |
+| `MANIFEST.in` | Extra files for the source package, including tests. |
+| `src/kimi_agent_discord_logging/spec.py` | Describes the module to Kimi and lists the events and actions it needs. |
+| `src/kimi_agent_discord_logging/guild_settings.py` | Defines and validates per-server settings. |
+| `src/kimi_agent_discord_logging/migrations.py` | Creates and upgrades the database table. |
+| `src/kimi_agent_discord_logging/snapshots.py` | Reads and writes stored message copies through `ModuleStorage`. |
+| `src/kimi_agent_discord_logging/invites.py` | Tracks invite counters and refuses to guess when unclear. |
+| `src/kimi_agent_discord_logging/renderer.py` | Builds embeds within Discord's length limits. |
+| `src/kimi_agent_discord_logging/module.py` | Start, stop, event handling, log delivery, and health. |
 | `tests/conftest.py` | Starts the module with the SDK's fake Discord and in-memory database. |
-| `tests/test_spec.py` | Checks that Kimi can load the module and that its declarations are valid. |
-| `tests/test_module.py` | Tests the main logging behavior through the public API. |
-| `tests/test_invites.py` | Covers uncertain and out-of-order invite cases. |
-| `tests/test_migrations.py` | Checks upgrades from an existing installation. |
-| `tests/test_renderer.py` | Checks embed limits and user-provided names and filenames. |
-| `tests/test_storage_lifecycle.py` | Checks retention, ignored channels, and cleanup when the module is disabled. |
+| `tests/test_spec.py` | Kimi can load the module and its declarations are valid. |
+| `tests/test_module.py` | Main logging behavior through the public API. |
+| `tests/test_invites.py` | Uncertain and out-of-order invite cases. |
+| `tests/test_migrations.py` | Upgrades from an existing installation. |
+| `tests/test_renderer.py` | Embed limits and user-provided names and filenames. |
+| `tests/test_storage_lifecycle.py` | Retention, ignored channels, and cleanup when disabled. |
 
-When Kimi starts, it loads `SPEC`, checks the declarations, creates the module,
-runs its migrations, and calls `start()`. During shutdown it calls `close()`,
-which unregisters event handlers and commands. The daily cleanup uses Kimi's
-scheduler, so the job survives a restart.
+At startup Kimi loads `SPEC`, checks the declarations, creates the module, runs
+migrations, and calls `start()`. At shutdown it calls `close()`, which unregisters
+handlers and commands. Daily cleanup uses Kimi's scheduler, so it survives
+restarts. Each server has its own message and invite locks, so events in one
+server stay ordered without blocking others.
 
-Each Discord server has its own message and invite locks. Events from the same
-server stay in order, while a slow request in one server does not hold up the
-others. Settings changes use those same locks.
-
-The module asks Kimi only for the access it uses:
-
-- capabilities `discord.members.v1` and `discord.message_content.v1`;
-- Discord actions `send_message`, `fetch_message`, `fetch_channel`, and
-  `fetch_invites`;
-- seven normalized `discord.*` event topics;
-- no direct bot or database access, outbound HTTP hosts, LLM tools, shared
-  services, or dependencies on other modules.
+The module declares only what it uses: capabilities `discord.members.v1` and
+`discord.message_content.v1`; Discord actions `send_message`, `fetch_message`,
+`fetch_channel`, and `fetch_invites`; seven `discord.*` event topics; and no
+direct bot or database access, outbound hosts, AI tools, or other modules.
 
 ### Local development
-
-Install the locked development environment and run every check from this
-repository's root:
 
 ```console
 uv sync --extra dev
@@ -375,29 +308,26 @@ uv build --no-sources
 uv run twine check dist/*
 ```
 
-The lock file installs `kimi-agent-module-api` from PyPI on purpose. This helps
-catch accidental imports from a nearby Kimi checkout. If you need to test an
-unreleased API change, use a temporary local source override and do not commit
-it as the package dependency.
+The lock file installs `kimi-agent-module-api` from PyPI on purpose, to catch
+accidental imports from a nearby Kimi checkout. To test an unreleased API change,
+use a temporary local override and do not commit it.
 
 When changing the module:
 
 1. Keep the version in `pyproject.toml` and `spec.VERSION` equal.
-2. Never rename, reorder, or edit a released migration. Add a new, uniquely
-   named migration for each database change; Kimi rejects changed migration
-   history.
-3. Add declarations before using a new event, Discord action, HTTP host, or
-   service, and extend `test_declarations_pass_host_preflight`.
-4. Update the settings reference and privacy disclosure whenever observed or
-   stored data changes.
-5. Run the checks, build the package, then install the wheel or editable
-   checkout into a sandbox Kimi instance for a real startup and Discord test.
+2. Never rename, reorder, or edit a released migration. Add a new one for each
+   database change. Kimi rejects changed migration history.
+3. Declare any new event, action, host, or service before using it, and extend
+   `test_declarations_pass_host_preflight`.
+4. Update the settings table and privacy section whenever stored or observed data
+   changes.
+5. Run the checks, build the package, and try it in a sandbox Kimi with a real
+   Discord server.
 
 ## License and name
 
 MIT. See [LICENSE](LICENSE).
 
-This is an independent community module for the Kimi Discord assistant. It is
-not affiliated with, endorsed by, or sponsored by Moonshot AI or any of its
-Kimi products. In this repository, “Kimi” means the Discord bot that loads the
-module.
+This is an independent community module for the Kimi Discord bot. It is not
+affiliated with, endorsed by, or sponsored by Moonshot AI or its Kimi products.
+Here, "Kimi" means the Discord bot that loads the module.
