@@ -25,7 +25,7 @@ The module gives the AI no tools and never sends message content to a model.
 
 You need:
 
-- A Kimi installation that supports module API version 1, on Python 3.14 or newer.
+- A Kimi installation that supports module API version 2, on Python 3.14 or newer.
 - The bot's **Server Members Intent** and **Message Content Intent**, turned on
   both in Kimi's environment file and in the Discord Developer Portal.
 - Permission to install a Python package into the environment that runs Kimi.
